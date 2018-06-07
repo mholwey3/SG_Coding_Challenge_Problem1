@@ -1,36 +1,39 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Xml;
 using System.Windows.Forms.DataVisualization.Charting;
 using System.Drawing;
 
 namespace SGCodingChallengeProblem1 {
 	class PopulationStatisticsReportGenerator {
+		private int startYear;
+		private int endYear;
 
-		List<Person> people;
+		private Chart chart;
 
-		// Maps year to numPeopleAlive
-		Dictionary<int, int> totalPeopleAlivePerYear;
-
-		public PopulationStatisticsReportGenerator() {
-			people = new List<Person>();
-			totalPeopleAlivePerYear = new Dictionary<int, int>();
+		public PopulationStatisticsReportGenerator(int startYear, int endYear) {
+			this.startYear = startYear;
+			this.endYear = endYear;
+			chart = new Chart();
 		}
 
 		public void Run() {
+			SetupChart();
 			XmlNodeList people = GetDataset();
-			DetermineTotalPeopleAlivePerYear(1900, 2000, people);
+			List<int> bestYears = FindYearsWithMostPeopleAlive(startYear, endYear, people);
 
-			foreach (KeyValuePair<int, int> entry in totalPeopleAlivePerYear) {
-				Console.WriteLine("{0}: {1} people alive.", entry.Key, entry.Value);
+			Console.WriteLine(bestYears.Count == 1 ? "The year with the most people alive is: " : "The years with the most people alive are: ");
+			foreach(int year in bestYears) {
+				Console.WriteLine(year);
 			}
 
-			GenerateResultsChart();
+			DrawAndSaveChart();
 		}
 
+		/// <summary>
+		/// Gets the Xml nodes that make up the dataset
+		/// </summary>
+		/// <returns>The Xml nodes</returns>
 		public XmlNodeList GetDataset() {
 			XmlDocument dataDoc = new XmlDocument();
 			dataDoc.Load(@"dataset.xml");
@@ -38,54 +41,75 @@ namespace SGCodingChallengeProblem1 {
 		}
 
 		/// <summary>
-		/// Determines the total number of people that are alive for each year.
+		/// Finds the year(s) with the most people alive and adds a data point to the chart for each year
 		/// </summary>
-		public void DetermineTotalPeopleAlivePerYear(int startYear, int endYear, XmlNodeList people) {
-			for(int i = startYear; i <= endYear; i++) {
+		/// <param name="startYear"></param>
+		/// <param name="endYear"></param>
+		/// <param name="people"></param>
+		/// <returns>The year(s) with the most people alive</returns>
+		public List<int> FindYearsWithMostPeopleAlive(int startYear, int endYear, XmlNodeList people) {
+			List<int> bestYears = new List<int>();
+			int numPeopleAliveDuringBestYear = 0;
+			for (int year = startYear; year < endYear; year++) {
 				int numAlive = 0;
-				foreach (XmlNode node in people) {
-					int birthYear = Int32.Parse(node.SelectSingleNode("BirthYear").InnerText);
-					int deathYear = Int32.Parse(node.SelectSingleNode("DeathYear").InnerText);
+				foreach (XmlNode person in people) {
+					int birthYear = Int32.Parse(person.SelectSingleNode("BirthYear").InnerText);
+					int deathYear = Int32.Parse(person.SelectSingleNode("DeathYear").InnerText);
 					Person p = new Person(birthYear, deathYear);
-					if (p.WasAliveDuringYear(i)) {
+					if (p.WasAliveDuringYear(year)) {
 						numAlive++;
 					}
 				}
-				totalPeopleAlivePerYear.Add(i, numAlive);
+
+				if (numAlive == numPeopleAliveDuringBestYear) {
+					bestYears.Add(year);
+					numPeopleAliveDuringBestYear = numAlive;
+				} else if (numAlive > numPeopleAliveDuringBestYear) {
+					bestYears.Clear();
+					bestYears.Add(year);
+					numPeopleAliveDuringBestYear = numAlive;
+				}
+				AddDataPointToChart(year, numAlive);
 			}
+
+			return bestYears;
 		}
 
-		public void GenerateDatasetDataTable() {
-
-		}
-
-		public void GenerateResultsChart() {
-			Chart chart = new Chart();
-
-			chart.Size = new Size(900, 400);
+		public void SetupChart() {
+			chart = new Chart();
+			chart.Size = new Size(2048, 512);
 			chart.Legends.Add(new Legend() { Name = "Legend" });
 			chart.Legends[0].Docking = Docking.Bottom;
+			chart.Palette = ChartColorPalette.BrightPastel;
+
 			ChartArea chartArea = new ChartArea() { Name = "ChartArea" };
 			chartArea.AxisX.MajorGrid.LineWidth = 0;
 			chartArea.AxisY.MajorGrid.LineWidth = 0;
+			chartArea.AxisX.Title = "Year";
+			chartArea.AxisY.Title = "Number of People Alive";
 			chartArea.BackColor = System.Drawing.Color.FromName("White");
 			chart.ChartAreas.Add(chartArea);
-			chart.Palette = ChartColorPalette.BrightPastel;
+			chart.ChartAreas["ChartArea"].AxisX.Interval = 1;
+
 			string series = string.Empty;
-			series = "Number of People Alive Per Year";
+			series = "Count";
 			chart.Series.Add(series);
 			chart.Series[series].ChartType = SeriesChartType.Column;
-			foreach(KeyValuePair<int, int> entry in totalPeopleAlivePerYear) {
-				DataPoint dataPoint = new DataPoint() {
-					AxisLabel = "series",
-					XValue = entry.Key,
-					YValues = new double[] { entry.Value }
-				};
-				chart.Series[series].Points.Add(dataPoint);
-			}
+		}
+
+		public void AddDataPointToChart(int year, int numAlive) {
+			DataPoint dataPoint = new DataPoint();
+			dataPoint.AxisLabel = year.ToString();
+			dataPoint.Label = numAlive.ToString();
+			dataPoint.XValue = year;
+			dataPoint.YValues = new double[] { numAlive };
+			chart.Series[0].Points.Add(dataPoint);
+		}
+
+		public void DrawAndSaveChart() {
 			chart.Invalidate();
-			chart.SaveImage(@"resultsChart.png", ChartImageFormat.Png);
-			Console.WriteLine("Generated Chart: resultsChart.png");
+			chart.SaveImage(@"totalPeopleAlivePerYear.png", ChartImageFormat.Png);
+			Console.WriteLine("Generated Chart: totalPeopleAlivePerYear.png");
 		}
 
 	}
